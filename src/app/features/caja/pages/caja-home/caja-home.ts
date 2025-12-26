@@ -1,8 +1,10 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, OnDestroy, Renderer2  } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { CurrencyArPipe } from '../../../../shared/pipes/currency-ar.pipe';
 import { Cuota, Inquilino, MetodoPago, Pagos } from '../../models/caja.models';
 import { CajaService, PagarRequest } from '../../services/caja.service';
+import { DOCUMENT } from '@angular/common';
+
 
 @Component({
   selector: 'app-caja-home',
@@ -11,10 +13,15 @@ import { CajaService, PagarRequest } from '../../services/caja.service';
   templateUrl: './caja-home.html',
   styleUrl: './caja-home.scss',
 })
-export class CajaHome implements OnInit {
+export class CajaHome implements OnInit, OnDestroy  {
 
   private cajaService = inject(CajaService);
   private route = inject(ActivatedRoute);
+  private renderer = inject(Renderer2);
+    private document = inject(DOCUMENT);
+
+
+
   
   idWork = signal<number>(0);
   usuarioActual = signal<string>('');
@@ -45,6 +52,11 @@ export class CajaHome implements OnInit {
   transferenciaHabilitada = computed(() => this.esTransferencia());
 
   ngOnInit() {
+
+        // ⬇️ AGREGAR: Ocultar scrollbars al cargar el componente
+    this.renderer.setStyle(this.document.body, 'overflow', 'hidden');
+    this.renderer.setStyle(this.document.documentElement, 'overflow', 'hidden');
+
     const idWorkParam = this.route.snapshot.queryParams['idWork'];
     const fechaParam = this.route.snapshot.queryParams['fecha'];
     const usuarioParam = this.route.snapshot.queryParams['usuario'];
@@ -63,6 +75,12 @@ export class CajaHome implements OnInit {
     } else {
       alert('Falta parámetro idWork');
     }
+  }
+
+  ngOnDestroy() {
+    // ⬇️ AGREGAR: Restaurar scrollbars al salir del componente
+    this.renderer.removeStyle(this.document.body, 'overflow');
+    this.renderer.removeStyle(this.document.documentElement, 'overflow');
   }
 
   cargarDatos(fecha?: string) {
@@ -355,9 +373,11 @@ export class CajaHome implements OnInit {
         retencion: this.pagos().retencion,
         cuotas: cuotasAPagar,
         usuario: this.usuarioActual(),
+        fecha_transferencia: this.fechaOriginal() // ⬅️ AGREGAR ESTA LÍNEA
       };
 
       console.log('💳 Enviando pago:', request);
+      console.log('📅 Fecha que se envía:', this.fechaOriginal());
 
       this.cajaService.registrarPago(request).subscribe({
         next: (response) => {
@@ -370,9 +390,28 @@ export class CajaHome implements OnInit {
             const urlImpresion = `../blank_imprime_comprobante/blank_imprime_comprobante.php?comprobante=${response.nroComprobante}&pago_total=${response.pagoTotal}`;
             window.open(urlImpresion, '_blank', 'width=800,height=600');
 
+           
             // ⬇️ RECARGAR DATOS
-            this.cargarDatos(this.fechaOriginal());
-            this.resetearPagos();
+            //this.cargarDatos(this.fechaOriginal());
+            //this.resetearPagos();
+
+            // ⬇️ AGREGAR REDIRECCIÓN DESPUÉS DEL ALERT
+            //window.location.href = '../control_seleccionar_cliente_a_cobrar/control_seleccionar_cliente_a_cobrar.php';
+
+            // Limpiar estilos
+            this.renderer.removeStyle(this.document.body, 'overflow');
+            this.renderer.removeStyle(this.document.documentElement, 'overflow');
+            
+            setTimeout(() => {
+              try {
+                // Cerrar la pestaña de ScriptCase
+                (window.parent as any).del_aba_td('item_69');
+              } catch (e) {
+                console.error('Error al cerrar pestaña:', e);
+                window.location.href = '../control_seleccionar_cliente_a_cobrar/control_seleccionar_cliente_a_cobrar.php';
+              }
+            }, 1000);
+
           } else {
             alert('Error: ' + response.message);
           }
@@ -386,7 +425,7 @@ export class CajaHome implements OnInit {
     }
   }
 
-
+/*
   resetearPagos() {
     this.pagos.set({
       efectivo: 0,
@@ -396,6 +435,22 @@ export class CajaHome implements OnInit {
     });
     this.metodoActivo.set(null);
   }
-
+*/
   
+// ⬇️ AGREGAR ESTE MÉTODO AL FINAL
+  cerrarYVolver() {
+    // Limpiar estilos
+    this.renderer.removeStyle(this.document.body, 'overflow');
+    this.renderer.removeStyle(this.document.documentElement, 'overflow');
+    
+    try {
+      // Llamar a la función de ScriptCase para cerrar la pestaña
+      (window.parent as any).del_aba_td('item_69');
+    } catch (e) {
+      console.error('Error al cerrar pestaña:', e);
+      // Fallback: redirigir
+      window.location.href = '../control_seleccionar_cliente_a_cobrar/control_seleccionar_cliente_a_cobrar.php';
+    }
+
+  }
 }
