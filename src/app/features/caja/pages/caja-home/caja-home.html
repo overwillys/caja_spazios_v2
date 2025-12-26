@@ -1,0 +1,160 @@
+<div class="caja-container">
+  <div class="caja-grid">
+    <!-- Panel izquierdo -->
+    <div class="panel-izquierdo">
+      <div class="inquilino-header">
+        <div class="inquilino-info">
+          <div class="info-row">
+            <strong>Inquilino:</strong>
+            <span>{{ inquilino().nombre }}</span>
+          </div>
+          <div class="info-row">
+            <strong>Propiedad:</strong>
+            <span>{{ inquilino().propiedad }}</span>
+          </div>
+          <div class="info-row">
+            <strong>Tipo:</strong>
+            <span>{{ inquilino().tipo }}</span>
+            <strong>Cuit:</strong>
+            <span>{{ inquilino().cuit }}</span>
+          </div>
+          <div class="info-row">
+            <strong>Día de Vencimiento:</strong>
+            <span>{{ inquilino().diaVencimiento }}</span>
+          </div>
+        </div>
+        <div class="deuda-total">
+          <span class="label">Deuda Total:</span>
+          <span class="monto">${{ inquilino().deudaTotal | currencyAr }}</span>
+        </div>
+        <button class="btn-pagar-todo" (click)="pagarTodo()">Pagar todo</button>
+      </div>
+
+      <table class="tabla-cuotas">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th>Periodo</th>
+            <th>Concepto</th>
+            <th class="col-num">Importe</th>
+            <th class="col-num">Importe a pagar</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of cuotas(); track c.id; let idx = $index) {
+            <tr [class.selected]="c.seleccionado" [class.disabled]="!cuotaHabilitada()[idx]">
+              <td class="col-check">
+                <input
+                  type="checkbox"
+                  [checked]="c.seleccionado"
+                  [disabled]="!cuotaHabilitada()[idx]"
+                  (change)="toggleSeleccion(c.id, $any($event.target).checked)" />
+              </td>
+              <td>{{ c.periodo }}</td>
+              <td>{{ c.concepto }}</td>
+              <td class="col-num">{{ c.importe | currencyAr }}</td>
+              <td class="col-num">
+               <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  class="input-importe"
+                  [value]="c.importeAPagar"
+                  (input)="cambiarImporteAPagar(c.id, $any($event.target).value)"
+                  (keydown)="validarTecla($event)"
+                  [disabled]="!c.seleccionado" />
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Panel derecho -->
+    <div class="panel-derecho">
+      <div class="total-header">
+        <span class="label">Total a pagar</span>
+        <span class="monto">${{ totalAPagar() | currencyAr }}</span>
+      </div>
+
+      <div class="metodos-pago">
+         <div class="metodo-item">
+          <label>Efectivo</label>
+          <input
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            [value]="pagos().efectivo"
+            [disabled]="!efectivoHabilitado()"
+            [class.disabled]="!efectivoHabilitado()"
+            (input)="cambiarPago('efectivo', $any($event.target).value)"
+            (keydown)="validarTecla($event)"
+            (keydown.enter)="distribuirPagoAutomatico()"
+            placeholder="0" />
+        </div>
+
+        <!-- TRANSFERENCIA: Deshabilitado si es pago del día -->
+        <div class="metodo-item">
+          <label>Transferencia</label>
+          <input
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            [value]="pagos().transferencia"
+            [disabled]="!transferenciaHabilitada()"
+            [class.disabled]="!transferenciaHabilitada()"
+            (input)="cambiarPago('transferencia', $any($event.target).value)"
+            (keydown)="validarTecla($event)"
+            (keydown.enter)="distribuirPagoAutomatico()"
+            placeholder="0" />  
+        </div>
+
+          <div class="metodo-item">
+            <label>Cheque</label>
+            <input
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              [value]="pagos().cheque"
+              (input)="cambiarPago('cheque', $any($event.target).value)"
+              (keydown)="validarTecla($event)"
+              (keydown.enter)="distribuirPagoAutomatico()"
+              placeholder="0" />
+          </div>
+
+      <div class="metodo-item">
+          <label>Retención</label>
+           <input
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              [value]="pagos().retencion"
+              (input)="cambiarPago('retencion', $any($event.target).value)"
+              (keydown)="validarTecla($event)"
+              (keydown.enter)="distribuirPagoAutomatico()"
+              placeholder="0" />
+        </div>
+
+      <div class="resumen">
+        <div class="resumen-item">
+          <span>Pagado</span>
+          <strong>{{ totalPagado() | currencyAr }}</strong>
+        </div>
+        <div class="resumen-item">
+          <span>Diferencia</span>
+          <strong [class.error]="diferencia() !== 0">
+            {{ diferencia() | currencyAr }}
+          </strong>
+        </div>
+      </div>
+
+      <button
+        class="btn-pagar"
+        [disabled]="diferencia() !== 0 || totalAPagar() === 0"
+        (click)="pagar()">
+        Pagar
+      </button>
+    </div>
+  </div>
+</div>
+
