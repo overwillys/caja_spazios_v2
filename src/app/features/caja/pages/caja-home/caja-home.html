@@ -60,8 +60,9 @@
               <td>{{ c.periodo }}</td>
               <td>{{ c.concepto }}</td>
               <td class="col-num">{{ c.importe | currencyAr }}</td>
+              <!-- ⬇️ MODIFICAR la celda del input de importe a pagar -->
               <td class="col-num">
-               <input
+                <input
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
@@ -69,7 +70,9 @@
                   [value]="c.importeAPagar"
                   (input)="cambiarImporteAPagar(c.id, $any($event.target).value)"
                   (keydown)="validarTecla($event)"
-                  [disabled]="!c.seleccionado" />
+                  [disabled]="!c.seleccionado || !esUltimoPeriodoMarcado(c)"
+                  [class.parcial-permitido]="c.seleccionado && esUltimoPeriodoMarcado(c)"
+                  [title]="!esUltimoPeriodoMarcado(c) && c.seleccionado ? 'Solo se permiten parciales en el último período' : ''" />
               </td>
             </tr>
           }
@@ -142,7 +145,7 @@
               placeholder="0" />
         </div>
 
-      <div class="resumen">
+      <!--<div class="resumen">
         <div class="resumen-item">
           <span>Pagado</span>
           <strong>{{ totalPagado() | currencyAr }}</strong>
@@ -153,7 +156,7 @@
             {{ diferencia() | currencyAr }}
           </strong>
         </div>
-      </div>
+      </div>-->
 
       <button
         class="btn-pagar"

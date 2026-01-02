@@ -5,7 +5,6 @@ import { Cuota, Inquilino, MetodoPago, Pagos } from '../../models/caja.models';
 import { CajaService, PagarRequest } from '../../services/caja.service';
 import { DOCUMENT } from '@angular/common';
 
-
 @Component({
   selector: 'app-caja-home',
   standalone: true,
@@ -18,11 +17,8 @@ export class CajaHome implements OnInit, OnDestroy  {
   private cajaService = inject(CajaService);
   private route = inject(ActivatedRoute);
   private renderer = inject(Renderer2);
-    private document = inject(DOCUMENT);
+  private document = inject(DOCUMENT);
 
-
-
-  
   idWork = signal<number>(0);
   usuarioActual = signal<string>('');
   fechaOriginal = signal<string | undefined>(undefined);
@@ -52,8 +48,6 @@ export class CajaHome implements OnInit, OnDestroy  {
   transferenciaHabilitada = computed(() => this.esTransferencia());
 
   ngOnInit() {
-
-        // ⬇️ AGREGAR: Ocultar scrollbars al cargar el componente
     this.renderer.setStyle(this.document.body, 'overflow', 'hidden');
     this.renderer.setStyle(this.document.documentElement, 'overflow', 'hidden');
 
@@ -71,14 +65,13 @@ export class CajaHome implements OnInit, OnDestroy  {
       this.idWork.set(parseInt(idWorkParam));
       this.usuarioActual.set(usuarioParam || 'cajeroSYS');
       this.fechaOriginal.set(fechaParam);
-      this.cargarDatos(fechaParam); // ⬅️ SOLO UNA LLAMADA CON FECHA
+      this.cargarDatos(fechaParam);
     } else {
       alert('Falta parámetro idWork');
     }
   }
 
   ngOnDestroy() {
-    // ⬇️ AGREGAR: Restaurar scrollbars al salir del componente
     this.renderer.removeStyle(this.document.body, 'overflow');
     this.renderer.removeStyle(this.document.documentElement, 'overflow');
   }
@@ -106,6 +99,8 @@ export class CajaHome implements OnInit, OnDestroy  {
           this.pagos.update(p => ({ ...p, transferencia: 0 }));
         }
         
+        this.inicializarPagosDesdeSeleccionados();
+        
         this.cargando.set(false);
       },
       error: (err) => {
@@ -113,6 +108,36 @@ export class CajaHome implements OnInit, OnDestroy  {
         alert('Error al cargar datos del inquilino');
         this.cargando.set(false);
       },
+    });
+  }
+
+  inicializarPagosDesdeSeleccionados() {
+    const cuotasSeleccionadas = this.cuotas().filter(c => c.seleccionado);
+    
+    if (cuotasSeleccionadas.length === 0) return;
+    
+    const totalSeleccionado = cuotasSeleccionadas.reduce(
+      (acc, c) => acc + c.importeAPagar, 
+      0
+    );
+    
+    if (this.esTransferencia()) {
+      this.pagos.update(p => ({
+        ...p,
+        transferencia: totalSeleccionado
+      }));
+      this.metodoActivo.set('TRANSFERENCIA');
+    } else {
+      this.pagos.update(p => ({
+        ...p,
+        efectivo: totalSeleccionado
+      }));
+      this.metodoActivo.set('EFECTIVO');
+    }
+    
+    console.log('💰 Pagos inicializados:', {
+      totalSeleccionado,
+      metodo: this.esTransferencia() ? 'TRANSFERENCIA' : 'EFECTIVO'
     });
   }
 
@@ -199,63 +224,6 @@ export class CajaHome implements OnInit, OnDestroy  {
 
   // --------- MÉTODOS: DISTRIBUCIÓN AUTOMÁTICA ---------
 
-
-  distribuirPagoAutomatico() {
-  const totalDisponible = this.totalPagado();
-  let restante = totalDisponible;
-
-  // ⬇️ VERIFICAR: ¿Hay checkboxes ya marcados?
-  const cuotasMarcadas = this.cuotas().filter(c => c.seleccionado);
-  const hayCheckboxesMarcados = cuotasMarcadas.length > 0;
-
-  if (hayCheckboxesMarcados) {
-    // ⬇️ CASO 1: Hay checkboxes marcados → Distribuir SOLO entre ellos
-    this.cuotas.update(list => {
-      return list.map(cuota => {
-        if (!cuota.seleccionado) {
-          // No tocar las cuotas NO marcadas
-          return cuota;
-        }
-
-        if (restante <= 0) {
-          // Ya no hay dinero disponible → Marcar como no pagado
-          return { ...cuota, seleccionado: false, importeAPagar: 0 };
-        }
-
-        // Distribuir entre las marcadas
-        const pagar = Math.min(cuota.importe, restante);
-        restante -= pagar;
-
-        return {
-          ...cuota,
-          seleccionado: pagar > 0,
-          importeAPagar: pagar,
-        };
-      });
-    });
-  } else {
-    // ⬇️ CASO 2: NO hay checkboxes marcados → Distribuir desde el inicio
-    this.cuotas.update(list => {
-      return list.map(cuota => {
-        if (restante <= 0) {
-          return { ...cuota, seleccionado: false, importeAPagar: 0 };
-        }
-
-        const pagar = Math.min(cuota.importe, restante);
-        restante -= pagar;
-
-        return {
-          ...cuota,
-          seleccionado: pagar > 0,
-          importeAPagar: pagar,
-        };
-      });
-    });
-  }
-}
-
-
-  /*
   distribuirPagoAutomatico() {
     const totalDisponible = this.totalPagado();
     let restante = totalDisponible;
@@ -276,28 +244,32 @@ export class CajaHome implements OnInit, OnDestroy  {
         };
       });
     });
+
+    console.log('🔄 Distribución automática completada. Restante:', restante);
   }
-  */
+
   // --------- MÉTODOS: PAGOS ---------
 
   cambiarPago(metodo: keyof Pagos, valor: string) {
-  // ⬇️ VALIDAR: Solo números, comas y puntos
-  const valorLimpio = valor.replace(/[^\d,]/g, '');
-  const numero = parseFloat(valorLimpio.replace(/,/g, '.')) || 0;
-  
-  if (metodo === 'efectivo' && this.esTransferencia()) {
-    console.warn('⚠️ No se puede usar efectivo en transferencia');
-    return;
-  }
-  
-  if (metodo === 'transferencia' && !this.esTransferencia()) {
-    console.warn('⚠️ No se puede usar transferencia en pago del día');
-    return;
-  }
+    const valorLimpio = valor.replace(/[^\d,]/g, '');
+    const numero = parseFloat(valorLimpio.replace(/,/g, '.')) || 0;
+    
+    if (metodo === 'efectivo' && this.esTransferencia()) {
+      console.warn('⚠️ No se puede usar efectivo en transferencia');
+      return;
+    }
+    
+    if (metodo === 'transferencia' && !this.esTransferencia()) {
+      console.warn('⚠️ No se puede usar transferencia en pago del día');
+      return;
+    }
 
-  this.metodoActivo.set(metodo.toUpperCase() as MetodoPago);
-  this.pagos.update(p => ({ ...p, [metodo]: numero }));
-  this.distribuirPagoAutomatico();
+    this.metodoActivo.set(metodo.toUpperCase() as MetodoPago);
+    this.pagos.update(p => ({ ...p, [metodo]: numero }));
+    
+    console.log('💵 Cambio de pago:', { metodo, valor: numero, totalPagado: this.totalPagado() });
+    
+    this.distribuirPagoAutomatico();
   }
 
   // --------- MÉTODOS: CUOTAS ---------
@@ -308,96 +280,6 @@ export class CajaHome implements OnInit, OnDestroy  {
     );
   }
 
-  toggleSeleccion(id: number, seleccionado: boolean) {
-  const cuotas = this.cuotas();
-  const idx = cuotas.findIndex(c => c.id === id);
-  const habilitadas = this.cuotaHabilitada();
-
-  if (!habilitadas[idx]) return;
-
-  const cuotaActual = cuotas[idx];
-  const periodos = this.periodosUnicos();
-  const idxPeriodoActual = periodos.indexOf(cuotaActual.periodo);
-
-  if (!seleccionado) {
-    // ⬇️ Al DESMARCAR: Restar el importe del método de pago
-    const importeARestar = cuotaActual.importeAPagar;
-    
-    if (importeARestar > 0) {
-      if (this.esTransferencia()) {
-        this.pagos.update(p => ({
-          ...p,
-          transferencia: Math.max(0, p.transferencia - importeARestar)
-        }));
-      } else {
-        this.pagos.update(p => ({
-          ...p,
-          efectivo: Math.max(0, p.efectivo - importeARestar)
-        }));
-      }
-    }
-
-    this.actualizarCuota(id, { seleccionado: false, importeAPagar: 0 });
-
-    // Desmarcar períodos posteriores del mismo concepto
-    this.cuotas.update(list =>
-      list.map(c => {
-        const idxPeriodoCuota = periodos.indexOf(c.periodo);
-
-        if (
-          c.concepto === cuotaActual.concepto &&
-          idxPeriodoCuota > idxPeriodoActual &&
-          c.seleccionado
-        ) {
-          const importeCuota = c.importeAPagar;
-          
-          if (importeCuota > 0) {
-            if (this.esTransferencia()) {
-              this.pagos.update(p => ({
-                ...p,
-                transferencia: Math.max(0, p.transferencia - importeCuota)
-              }));
-            } else {
-              this.pagos.update(p => ({
-                ...p,
-                efectivo: Math.max(0, p.efectivo - importeCuota)
-              }));
-            }
-          }
-          
-          return { ...c, seleccionado: false, importeAPagar: 0 };
-        }
-
-        return c;
-      }),
-    );
-  } else {
-    // ⬇️ Al MARCAR: Sumar el importe al método de pago correspondiente
-    const importeASumar = cuotaActual.importe;
-    
-    if (this.esTransferencia()) {
-      this.pagos.update(p => ({
-        ...p,
-        transferencia: p.transferencia + importeASumar  // ⬅️ SUMA al existente
-      }));
-      this.metodoActivo.set('TRANSFERENCIA');
-    } else {
-      this.pagos.update(p => ({
-        ...p,
-        efectivo: p.efectivo + importeASumar  // ⬅️ SUMA al existente
-      }));
-      this.metodoActivo.set('EFECTIVO');
-    }
-
-    this.actualizarCuota(id, { 
-      seleccionado: true, 
-      importeAPagar: importeASumar 
-    });
-  }
-}
-
-
-  /*
   toggleSeleccion(id: number, seleccionado: boolean) {
     const cuotas = this.cuotas();
     const idx = cuotas.findIndex(c => c.id === id);
@@ -418,7 +300,8 @@ export class CajaHome implements OnInit, OnDestroy  {
 
           if (
             c.concepto === cuotaActual.concepto &&
-            idxPeriodoCuota > idxPeriodoActual
+            idxPeriodoCuota > idxPeriodoActual &&
+            c.seleccionado
           ) {
             return { ...c, seleccionado: false, importeAPagar: 0 };
           }
@@ -427,40 +310,99 @@ export class CajaHome implements OnInit, OnDestroy  {
         }),
       );
     } else {
-      this.actualizarCuota(id, { seleccionado: true });
+      this.actualizarCuota(id, { 
+        seleccionado: true, 
+        importeAPagar: cuotaActual.importe 
+      });
     }
+
+    // ⬇️ RECALCULAR: Actualizar el método de pago con el total de cuotas seleccionadas
+    const totalSeleccionado = this.cuotas()
+      .filter(c => c.seleccionado)
+      .reduce((acc, c) => acc + c.importeAPagar, 0);
+
+    if (this.esTransferencia()) {
+      this.pagos.update(p => ({
+        ...p,
+        transferencia: totalSeleccionado
+      }));
+      this.metodoActivo.set('TRANSFERENCIA');
+    } else {
+      this.pagos.update(p => ({
+        ...p,
+        efectivo: totalSeleccionado
+      }));
+      this.metodoActivo.set('EFECTIVO');
+    }
+
+    console.log('✅ Toggle selección:', { 
+      cuota: cuotaActual.periodo, 
+      seleccionado, 
+      totalSeleccionado 
+    });
   }
 
-  */
+  esUltimoPeriodoMarcado(cuota: Cuota): boolean {
+    const cuotas = this.cuotas();
+    const periodosMarcados = [...new Set(
+      cuotas.filter(c => c.seleccionado).map(c => c.periodo)
+    )].sort();
+    
+    if (periodosMarcados.length === 0) return false;
+    
+    const ultimoPeriodo = periodosMarcados[periodosMarcados.length - 1];
+    return cuota.periodo === ultimoPeriodo;
+  }
+
   cambiarImporteAPagar(id: number, valor: string) {
-    // ⬇️ VALIDAR: Solo números, comas y puntos
     const valorLimpio = valor.replace(/[^\d,\.]/g, '');
     const numero = parseFloat(valorLimpio.replace(/,/g, '.')) || 0;
-    const seleccionado = numero > 0;
+    
+    const cuotas = this.cuotas();
+    const cuotaActual = cuotas.find(c => c.id === id);
+    
+    if (!cuotaActual || !cuotaActual.seleccionado) return;
+    
+    if (!this.esUltimoPeriodoMarcado(cuotaActual)) {
+      alert('Solo se pueden aplicar pagos parciales en el último período marcado');
+      return;
+    }
 
+    const importeAnterior = cuotaActual.importeAPagar;
+    const diferencia = numero - importeAnterior;
+    
+    if (this.esTransferencia()) {
+      this.pagos.update(p => ({
+        ...p,
+        transferencia: Math.max(0, p.transferencia + diferencia)
+      }));
+    } else {
+      this.pagos.update(p => ({
+        ...p,
+        efectivo: Math.max(0, p.efectivo + diferencia)
+      }));
+    }
+    
+    const seleccionado = numero > 0;
     this.actualizarCuota(id, {
       importeAPagar: numero,
       seleccionado,
     });
   }
 
-  // ⬇️ NUEVO: Método para validar teclas en los inputs
   validarTecla(event: KeyboardEvent): void {
     const teclasPermitidas = [
       'Backspace', 'Tab', 'End', 'Home', 'ArrowLeft', 'ArrowRight', 'Delete', ','
     ];
     
-    // Permitir teclas especiales
     if (teclasPermitidas.includes(event.key)) {
       return;
     }
     
-    // Permitir Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
     if (event.ctrlKey && ['a', 'c', 'v', 'x'].includes(event.key.toLowerCase())) {
       return;
     }
     
-    // Bloquear si no es número
     if (!/^\d$/.test(event.key)) {
       event.preventDefault();
     }
@@ -521,7 +463,7 @@ export class CajaHome implements OnInit, OnDestroy  {
         retencion: this.pagos().retencion,
         cuotas: cuotasAPagar,
         usuario: this.usuarioActual(),
-        fecha_transferencia: this.fechaOriginal() // ⬅️ AGREGAR ESTA LÍNEA
+        fecha_transferencia: this.fechaOriginal()
       };
 
       console.log('💳 Enviando pago:', request);
@@ -534,25 +476,14 @@ export class CajaHome implements OnInit, OnDestroy  {
           if (response.success) {
             alert(`Pago registrado exitosamente\nComprobante: ${response.nroComprobante}`);
 
-            // ⬇️ ABRIR VENTANA DE IMPRESIÓN CON GET
             const urlImpresion = `../blank_imprime_comprobante/blank_imprime_comprobante.php?comprobante=${response.nroComprobante}&pago_total=${response.pagoTotal}`;
             window.open(urlImpresion, '_blank', 'width=800,height=600');
 
-           
-            // ⬇️ RECARGAR DATOS
-            //this.cargarDatos(this.fechaOriginal());
-            //this.resetearPagos();
-
-            // ⬇️ AGREGAR REDIRECCIÓN DESPUÉS DEL ALERT
-            //window.location.href = '../control_seleccionar_cliente_a_cobrar/control_seleccionar_cliente_a_cobrar.php';
-
-            // Limpiar estilos
             this.renderer.removeStyle(this.document.body, 'overflow');
             this.renderer.removeStyle(this.document.documentElement, 'overflow');
             
             setTimeout(() => {
               try {
-                // Cerrar la pestaña de ScriptCase
                 (window.parent as any).del_aba_td('item_69');
               } catch (e) {
                 console.error('Error al cerrar pestaña:', e);
@@ -573,32 +504,15 @@ export class CajaHome implements OnInit, OnDestroy  {
     }
   }
 
-/*
-  resetearPagos() {
-    this.pagos.set({
-      efectivo: 0,
-      transferencia: 0,
-      cheque: 0,
-      retencion: 0,
-    });
-    this.metodoActivo.set(null);
-  }
-*/
-  
-// ⬇️ AGREGAR ESTE MÉTODO AL FINAL
   cerrarYVolver() {
-    // Limpiar estilos
     this.renderer.removeStyle(this.document.body, 'overflow');
     this.renderer.removeStyle(this.document.documentElement, 'overflow');
     
     try {
-      // Llamar a la función de ScriptCase para cerrar la pestaña
       (window.parent as any).del_aba_td('item_69');
     } catch (e) {
       console.error('Error al cerrar pestaña:', e);
-      // Fallback: redirigir
       window.location.href = '../control_seleccionar_cliente_a_cobrar/control_seleccionar_cliente_a_cobrar.php';
     }
-
   }
 }
