@@ -199,6 +199,63 @@ export class CajaHome implements OnInit, OnDestroy  {
 
   // --------- MÉTODOS: DISTRIBUCIÓN AUTOMÁTICA ---------
 
+
+  distribuirPagoAutomatico() {
+  const totalDisponible = this.totalPagado();
+  let restante = totalDisponible;
+
+  // ⬇️ VERIFICAR: ¿Hay checkboxes ya marcados?
+  const cuotasMarcadas = this.cuotas().filter(c => c.seleccionado);
+  const hayCheckboxesMarcados = cuotasMarcadas.length > 0;
+
+  if (hayCheckboxesMarcados) {
+    // ⬇️ CASO 1: Hay checkboxes marcados → Distribuir SOLO entre ellos
+    this.cuotas.update(list => {
+      return list.map(cuota => {
+        if (!cuota.seleccionado) {
+          // No tocar las cuotas NO marcadas
+          return cuota;
+        }
+
+        if (restante <= 0) {
+          // Ya no hay dinero disponible → Marcar como no pagado
+          return { ...cuota, seleccionado: false, importeAPagar: 0 };
+        }
+
+        // Distribuir entre las marcadas
+        const pagar = Math.min(cuota.importe, restante);
+        restante -= pagar;
+
+        return {
+          ...cuota,
+          seleccionado: pagar > 0,
+          importeAPagar: pagar,
+        };
+      });
+    });
+  } else {
+    // ⬇️ CASO 2: NO hay checkboxes marcados → Distribuir desde el inicio
+    this.cuotas.update(list => {
+      return list.map(cuota => {
+        if (restante <= 0) {
+          return { ...cuota, seleccionado: false, importeAPagar: 0 };
+        }
+
+        const pagar = Math.min(cuota.importe, restante);
+        restante -= pagar;
+
+        return {
+          ...cuota,
+          seleccionado: pagar > 0,
+          importeAPagar: pagar,
+        };
+      });
+    });
+  }
+}
+
+
+  /*
   distribuirPagoAutomatico() {
     const totalDisponible = this.totalPagado();
     let restante = totalDisponible;
@@ -220,7 +277,7 @@ export class CajaHome implements OnInit, OnDestroy  {
       });
     });
   }
-  
+  */
   // --------- MÉTODOS: PAGOS ---------
 
   cambiarPago(metodo: keyof Pagos, valor: string) {
