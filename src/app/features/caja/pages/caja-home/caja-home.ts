@@ -220,7 +220,7 @@ export class CajaHome implements OnInit, OnDestroy  {
       });
     });
   }
-
+  
   // --------- MÉTODOS: PAGOS ---------
 
   cambiarPago(metodo: keyof Pagos, valor: string) {
@@ -251,6 +251,96 @@ export class CajaHome implements OnInit, OnDestroy  {
     );
   }
 
+  toggleSeleccion(id: number, seleccionado: boolean) {
+  const cuotas = this.cuotas();
+  const idx = cuotas.findIndex(c => c.id === id);
+  const habilitadas = this.cuotaHabilitada();
+
+  if (!habilitadas[idx]) return;
+
+  const cuotaActual = cuotas[idx];
+  const periodos = this.periodosUnicos();
+  const idxPeriodoActual = periodos.indexOf(cuotaActual.periodo);
+
+  if (!seleccionado) {
+    // ⬇️ Al DESMARCAR: Restar el importe del método de pago
+    const importeARestar = cuotaActual.importeAPagar;
+    
+    if (importeARestar > 0) {
+      if (this.esTransferencia()) {
+        this.pagos.update(p => ({
+          ...p,
+          transferencia: Math.max(0, p.transferencia - importeARestar)
+        }));
+      } else {
+        this.pagos.update(p => ({
+          ...p,
+          efectivo: Math.max(0, p.efectivo - importeARestar)
+        }));
+      }
+    }
+
+    this.actualizarCuota(id, { seleccionado: false, importeAPagar: 0 });
+
+    // Desmarcar períodos posteriores del mismo concepto
+    this.cuotas.update(list =>
+      list.map(c => {
+        const idxPeriodoCuota = periodos.indexOf(c.periodo);
+
+        if (
+          c.concepto === cuotaActual.concepto &&
+          idxPeriodoCuota > idxPeriodoActual &&
+          c.seleccionado
+        ) {
+          const importeCuota = c.importeAPagar;
+          
+          if (importeCuota > 0) {
+            if (this.esTransferencia()) {
+              this.pagos.update(p => ({
+                ...p,
+                transferencia: Math.max(0, p.transferencia - importeCuota)
+              }));
+            } else {
+              this.pagos.update(p => ({
+                ...p,
+                efectivo: Math.max(0, p.efectivo - importeCuota)
+              }));
+            }
+          }
+          
+          return { ...c, seleccionado: false, importeAPagar: 0 };
+        }
+
+        return c;
+      }),
+    );
+  } else {
+    // ⬇️ Al MARCAR: Sumar el importe al método de pago correspondiente
+    const importeASumar = cuotaActual.importe;
+    
+    if (this.esTransferencia()) {
+      this.pagos.update(p => ({
+        ...p,
+        transferencia: p.transferencia + importeASumar  // ⬅️ SUMA al existente
+      }));
+      this.metodoActivo.set('TRANSFERENCIA');
+    } else {
+      this.pagos.update(p => ({
+        ...p,
+        efectivo: p.efectivo + importeASumar  // ⬅️ SUMA al existente
+      }));
+      this.metodoActivo.set('EFECTIVO');
+    }
+
+    this.actualizarCuota(id, { 
+      seleccionado: true, 
+      importeAPagar: importeASumar 
+    });
+  }
+}
+
+
+  /*
   toggleSeleccion(id: number, seleccionado: boolean) {
     const cuotas = this.cuotas();
     const idx = cuotas.findIndex(c => c.id === id);
@@ -284,6 +374,7 @@ export class CajaHome implements OnInit, OnDestroy  {
     }
   }
 
+  */
   cambiarImporteAPagar(id: number, valor: string) {
     // ⬇️ VALIDAR: Solo números, comas y puntos
     const valorLimpio = valor.replace(/[^\d,\.]/g, '');
