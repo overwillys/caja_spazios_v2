@@ -35,6 +35,7 @@ export class CajaHome implements OnInit, OnDestroy  {
   cuotas = signal<Cuota[]>([]);
   metodoActivo = signal<MetodoPago | null>(null);
   cargando = signal(false);
+  cambiosManuales = signal<Set<number>>(new Set());
 
   pagos = signal<Pagos>({
     efectivo: 0,
@@ -116,6 +117,15 @@ export class CajaHome implements OnInit, OnDestroy  {
     
     if (cuotasSeleccionadas.length === 0) return;
     
+    // ⬇️ Marcar las cuotas iniciales como cambios manuales
+    cuotasSeleccionadas.forEach(c => {
+      this.cambiosManuales.update(set => {
+        const newSet = new Set(set);
+        newSet.add(c.id);
+        return newSet;
+      });
+    });
+    
     const totalSeleccionado = cuotasSeleccionadas.reduce(
       (acc, c) => acc + c.importeAPagar, 
       0
@@ -137,7 +147,8 @@ export class CajaHome implements OnInit, OnDestroy  {
     
     console.log('💰 Pagos inicializados:', {
       totalSeleccionado,
-      metodo: this.esTransferencia() ? 'TRANSFERENCIA' : 'EFECTIVO'
+      metodo: this.esTransferencia() ? 'TRANSFERENCIA' : 'EFECTIVO',
+      cuotasManuales: Array.from(this.cambiosManuales())
     });
   }
 
@@ -226,10 +237,29 @@ export class CajaHome implements OnInit, OnDestroy  {
 
   distribuirPagoAutomatico() {
     const totalDisponible = this.totalPagado();
-    let restante = totalDisponible;
+    const cuotasManuales = this.cambiosManuales();
+    
+    const cuotasConCambioManual = this.cuotas().filter(c => cuotasManuales.has(c.id));
+    const montoComprometido = cuotasConCambioManual.reduce(
+      (acc, c) => acc + (c.seleccionado ? c.importeAPagar : 0), 
+      0
+    );
+    
+    let restante = totalDisponible - montoComprometido;
+
+    console.log('🔄 Distribución automática:', {
+      totalDisponible,
+      montoComprometido,
+      restante,
+      cuotasManuales: Array.from(cuotasManuales)
+    });
 
     this.cuotas.update(list => {
       return list.map(cuota => {
+        if (cuotasManuales.has(cuota.id)) {
+          return cuota;
+        }
+
         if (restante <= 0) {
           return { ...cuota, seleccionado: false, importeAPagar: 0 };
         }
@@ -245,7 +275,7 @@ export class CajaHome implements OnInit, OnDestroy  {
       });
     });
 
-    console.log('🔄 Distribución automática completada. Restante:', restante);
+    console.log('✅ Distribución completada. Restante:', restante);
   }
 
   // --------- MÉTODOS: PAGOS ---------
@@ -287,6 +317,12 @@ export class CajaHome implements OnInit, OnDestroy  {
 
     if (!habilitadas[idx]) return;
 
+    this.cambiosManuales.update(set => {
+      const newSet = new Set(set);
+      newSet.add(id);
+      return newSet;
+    });
+
     const cuotaActual = cuotas[idx];
     const periodos = this.periodosUnicos();
     const idxPeriodoActual = periodos.indexOf(cuotaActual.periodo);
@@ -303,6 +339,12 @@ export class CajaHome implements OnInit, OnDestroy  {
             idxPeriodoCuota > idxPeriodoActual &&
             c.seleccionado
           ) {
+            this.cambiosManuales.update(s => {
+              const newSet = new Set(s);
+              newSet.add(c.id);
+              return newSet;
+            });
+            
             return { ...c, seleccionado: false, importeAPagar: 0 };
           }
 
@@ -316,7 +358,6 @@ export class CajaHome implements OnInit, OnDestroy  {
       });
     }
 
-    // ⬇️ RECALCULAR: Actualizar el método de pago con el total de cuotas seleccionadas
     const totalSeleccionado = this.cuotas()
       .filter(c => c.seleccionado)
       .reduce((acc, c) => acc + c.importeAPagar, 0);
@@ -335,7 +376,7 @@ export class CajaHome implements OnInit, OnDestroy  {
       this.metodoActivo.set('EFECTIVO');
     }
 
-    console.log('✅ Toggle selección:', { 
+    console.log('✅ Toggle selección manual:', { 
       cuota: cuotaActual.periodo, 
       seleccionado, 
       totalSeleccionado 
@@ -408,7 +449,13 @@ export class CajaHome implements OnInit, OnDestroy  {
     }
   }
 
+  resetearCambiosManuales() {
+    this.cambiosManuales.set(new Set());
+  }
+
   pagarTodo() {
+    this.resetearCambiosManuales();
+    
     this.cuotas.update(list =>
       list.map(c => ({
         ...c,
@@ -439,8 +486,16 @@ export class CajaHome implements OnInit, OnDestroy  {
   }
 
   pagar() {
-    if (this.diferencia() !== 0 || this.totalAPagar() === 0) {
-      alert('El monto pagado no coincide con el total a pagar');
+    const totalPagado = this.totalPagado();
+    const totalAPagar = this.totalAPagar();
+    
+    if (totalAPagar === 0) {
+      alert('No hay cuotas seleccionadas para pagar');
+      return;
+    }
+    
+    if (totalPagado !== totalAPagar) {
+      alert(`El monto pagado ($${totalPagado.toLocaleString('es-AR')}) no coincide con el total a pagar ($${totalAPagar.toLocaleString('es-AR')})`);
       return;
     }
 
